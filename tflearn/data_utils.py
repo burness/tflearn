@@ -39,8 +39,7 @@ def to_categorical(y, nb_classes):
     if not nb_classes:
         nb_classes = np.max(y)+1
     Y = np.zeros((len(y), nb_classes))
-    for i in range(len(y)):
-        Y[i, y[i]] = 1.
+    Y[np.arange(len(y)),y] = 1.
     return Y
 
 
@@ -291,7 +290,7 @@ class VocabularyProcessor(_VocabularyProcessor):
 def build_hdf5_image_dataset(target_path, image_shape, output_path='dataset.h5',
                              mode='file', categorical_labels=True,
                              normalize=True, grayscale=False,
-                             files_extension=None, chunks=True):
+                             files_extension=None, chunks=False):
     """ Build HDF5 Image Dataset.
 
     Build an HDF5 dataset by providing either a root folder or a plain text
@@ -329,7 +328,7 @@ def build_hdf5_image_dataset(target_path, image_shape, output_path='dataset.h5',
 
         # Load HDF5 dataset
         import h5py
-        h5f = h5py.File('dataset.h5', 'w')
+        h5f = h5py.File('dataset.h5', 'r')
         X = h5f['X']
         Y = h5f['Y']
 
@@ -359,8 +358,9 @@ def build_hdf5_image_dataset(target_path, image_shape, output_path='dataset.h5',
         files_extension: `list of str`. A list of allowed image file
             extension, for example ['.jpg', '.jpeg', '.png']. If None,
             all files are allowed.
-        chunks: `bool` or `list of int`. Whether to chunks the dataset or not.
-            Additionaly, a specific shape for each chunk can be provided.
+        chunks: `bool` Whether to chunks the dataset or not. You should use
+            chunking only when you really need it. See HDF5 documentation.
+            If chunks is 'True' a sensitive default will be computed.
 
     """
     import h5py
@@ -383,14 +383,19 @@ def build_hdf5_image_dataset(target_path, image_shape, output_path='dataset.h5',
 
     n_classes = np.max(labels) + 1
 
-    d_imgshape = (len(images), image_shape[0], image_shape[1], 3) \
-        if not grayscale else (len(images), image_shape[0], image_shape[1])
+    d_imgshape = (len(images), image_shape[1], image_shape[0], 3) \
+        if not grayscale else (len(images), image_shape[1], image_shape[0])
     d_labelshape = (len(images), n_classes) \
         if categorical_labels else (len(images), )
-
+    x_chunks = None
+    y_chunks = None
+    if chunks is True:
+        x_chunks = (1,)+ d_imgshape[1:]
+        if len(d_labelshape) > 1:
+            y_chunks = (1,) + d_labelshape[1:]
     dataset = h5py.File(output_path, 'w')
-    dataset.create_dataset('X', d_imgshape, chunks=chunks)
-    dataset.create_dataset('Y', d_labelshape, chunks=chunks)
+    dataset.create_dataset('X', d_imgshape, chunks=x_chunks)
+    dataset.create_dataset('Y', d_labelshape, chunks=y_chunks)
 
     for i in range(len(images)):
         img = load_image(images[i])

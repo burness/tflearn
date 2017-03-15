@@ -56,14 +56,8 @@ def batch_normalization(incoming, beta=0.0, gamma=1.0, epsilon=1e-5,
 
     gamma_init = tf.random_normal_initializer(mean=gamma, stddev=stddev)
 
-    # Variable Scope fix for older TF
-    try:
-        vscope = tf.variable_scope(scope, name=name, values=[incoming],
-                                   reuse=reuse)
-    except Exception:
-        vscope = tf.variable_op_scope([incoming], scope, name, reuse=reuse)
-
-    with vscope as scope:
+    with tf.variable_scope(scope, default_name=name, values=[incoming],
+                           reuse=reuse) as scope:
         name = scope.name
         beta = vs.variable('beta', shape=[input_shape[-1]],
                            initializer=tf.constant_initializer(beta),
@@ -79,24 +73,25 @@ def batch_normalization(incoming, beta=0.0, gamma=1.0, epsilon=1e-5,
             tf.add_to_collection(tf.GraphKeys.EXCL_RESTORE_VARS, gamma)
 
         axis = list(range(input_ndim - 1))
-        moving_mean = vs.variable('moving_mean',
-                                  input_shape[-1:],
-                                  initializer=tf.zeros_initializer,
-                                  trainable=False,
-                                  restore=restore)
+
+        moving_mean = vs.variable('moving_mean', input_shape[-1:],
+                                  initializer=tf.zeros_initializer(),
+                                  trainable=False, restore=restore)
         moving_variance = vs.variable('moving_variance',
                                       input_shape[-1:],
-                                      initializer=tf.ones_initializer,
+                                      initializer=tf.constant_initializer(1.),
                                       trainable=False,
                                       restore=restore)
 
         # Define a function to update mean and variance
         def update_mean_var():
             mean, variance = tf.nn.moments(incoming, axis)
+
             update_moving_mean = moving_averages.assign_moving_average(
-                moving_mean, mean, decay)
+                moving_mean, mean, decay, zero_debias=False)
             update_moving_variance = moving_averages.assign_moving_average(
-                moving_variance, variance, decay)
+                moving_variance, variance, decay, zero_debias=False)
+
             with tf.control_dependencies(
                     [update_moving_mean, update_moving_variance]):
                 return tf.identity(mean), tf.identity(variance)
@@ -106,17 +101,10 @@ def batch_normalization(incoming, beta=0.0, gamma=1.0, epsilon=1e-5,
         mean, var = tf.cond(
             is_training, update_mean_var, lambda: (moving_mean, moving_variance))
 
-        try:
-            inference = tf.nn.batch_normalization(
-                incoming, mean, var, beta, gamma, epsilon)
-            inference.set_shape(input_shape)
-        # Fix for old Tensorflow
-        except Exception as e:
-            inference = tf.nn.batch_norm_with_global_normalization(
-                incoming, mean, var, beta, gamma, epsilon,
-                scale_after_normalization=True,
-            )
-            inference.set_shape(input_shape)
+        inference = tf.nn.batch_normalization(
+            incoming, mean, var, beta, gamma, epsilon)
+        inference.set_shape(input_shape)
+
 
     # Add attributes for easy access
     inference.scope = scope
@@ -188,9 +176,9 @@ def l2_normalize(incoming, dim, epsilon=1e-12, name="l2_normalize"):
     Returns:
       A `Tensor` with the same shape as `x`.
     """
-    with tf.variable_op_scope([incoming], name) as name:
+    with tf.name_scope(name) as name:
         x = tf.ops.convert_to_tensor(incoming, name="x")
         square_sum = tf.reduce_sum(tf.square(x), [dim], keep_dims=True)
         x_inv_norm = tf.rsqrt(tf.maximum(square_sum, epsilon))
 
-    return tf.mul(x, x_inv_norm, name=name)
+    return tf.multiply(x, x_inv_norm, name=name)

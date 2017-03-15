@@ -41,9 +41,9 @@ def get_summary(stype, tag, value=None, collection_key=None,
             raise Exception("Summary doesn't exist, a value must be "
                             "specified to initialize it.")
         if stype == "histogram":
-            summ = tf.histogram_summary(tag, value)
+            summ = tf.summary.histogram(tag, value)
         elif stype == "scalar":
-            summ = tf.scalar_summary(tag, value)
+            summ = tf.summary.scalar(tag, value)
         elif stype == "image":
             pass  # TODO: create summary
         else:
@@ -179,11 +179,14 @@ def get_value_from_summary_string(tag, summary_str):
         `Exception` if tag not found.
 
     """
+    # Fix for TF 0.12
+    if tag[-1] == '/':
+        tag = tag[:-1]
     summ = summary_pb2.Summary()
     summ.ParseFromString(summary_str)
 
     for row in summ.value:
-        if row.tag == tag:
+        if row.tag.endswith(tag):
             return float(row.simple_value)
 
     raise ValueError("Tag: " + tag + " cannot be found in summaries list.")
@@ -227,10 +230,10 @@ def add_loss_summaries(total_loss, loss, regul_losses_collection_key,
     if len(other_losses) > 0 and total_loss is not None:
         loss_averages_op = loss_averages.apply(
             [total_loss] + [loss] + other_losses)
-        summ_name = "- Loss & var loss/" + name_prefix
+        summ_name = "Loss_var_loss/" + name_prefix
         get_summary("scalar", summ_name, loss_averages.average(total_loss),
                     summaries_collection_key)
-        get_summary("scalar", summ_name + ' (raw)', total_loss,
+        get_summary("scalar", summ_name + 'raw', total_loss,
                     summaries_collection_key)
     elif total_loss is not None:
         loss_averages_op = loss_averages.apply([loss] + other_losses)
@@ -238,17 +241,17 @@ def add_loss_summaries(total_loss, loss, regul_losses_collection_key,
         loss_averages_op = loss_averages.apply([loss])
 
     # For tflearn wrapper visibility
-    summ_name = "- Loss/" + name_prefix
+    summ_name = "Loss/" + name_prefix
     get_summary("scalar", summ_name, loss_averages.average(loss),
                 summaries_collection_key)
-    get_summary("scalar", summ_name + ' (raw)', loss, summaries_collection_key)
+    get_summary("scalar", summ_name + 'raw', loss, summaries_collection_key)
 
     for wdl in other_losses:
         # No prefix, we store every variable into their own scope
         summ_name = wdl.op.name
         get_summary("scalar", summ_name, loss_averages.average(wdl),
                     summaries_collection_key)
-        get_summary("scalar", summ_name + ' (raw)', wdl,
+        get_summary("scalar", summ_name + 'raw', wdl,
                     summaries_collection_key)
 
     return loss_averages_op

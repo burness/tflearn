@@ -160,13 +160,13 @@ To get or set the value of these variables, TFLearn models class implement `get_
 ```python
 input_data = tflearn.input_data(shape=[None, 784])
 fc1 = tflearn.fully_connected(input_data, 64)
-fc2 = tflearn.fully_connected(input_data, 10, activation='softmax')
-net = tflearn.regression(fc1)
+fc2 = tflearn.fully_connected(fc1, 10, activation='softmax')
+net = tflearn.regression(fc2)
 model = DNN(net)
-# Get weights values of fc1
-model.get_weights(fc1.W)
-# Assign new random weights to fc1
-model.set_weights(fc1.W, numpy.random.rand(64, 10))
+# Get weights values of fc2
+model.get_weights(fc2.W)
+# Assign new random weights to fc2
+model.set_weights(fc2.W, numpy.random.rand(64, 10))
 ```
 
 Note that you can also directly use TensorFlow `eval` or `assign` ops to get or set the value of these variables.
@@ -375,7 +375,7 @@ tflearn.is_training(False)
 ### Training Callbacks
 
 During the training cycle, TFLearn gives you the possibility to track and interact with the metrics of the training throughout a set of functions given by the [Callback](https://github.com/tflearn/tflearn/blob/master/tflearn/callbacks.py#L10) interface.
-To simplify the metrics retreivement, each callback method received a [TrainingState](https://github.com/tflearn/tflearn/blob/master/tflearn/helpers/trainer.py#L950) which track the state (e.g. : current epoch, step, batch iteration) and metrics (e.g. : current validation accuracy, global accuracy etc..)
+To simplify the metrics retrieval, each callback method received a [TrainingState](https://github.com/tflearn/tflearn/blob/master/tflearn/helpers/trainer.py#L976) which track the state (e.g. : current epoch, step, batch iteration) and metrics (e.g. : current validation accuracy, global accuracy etc..)
 
 Callback methods which relate to the training cycle : 
 - `on_train_begin(training_state)`
@@ -410,7 +410,7 @@ Then you just need to add it on the `model.fit` call
 ```python
 
 
-monitorCallback = new MonitorCallback(api)
+monitorCallback = MonitorCallback(api) # "api" is your API class
 model = ...
 
 model.fit(..., callbacks=monitorCallback)

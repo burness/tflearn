@@ -171,11 +171,7 @@ def leaky_relu(x, alpha=0.1, name="LeakyReLU"):
 
     """
 
-    # If incoming Tensor has a scope, this op is defined inside it
-    i_scope = ""
-    if hasattr(x, 'scope'):
-        if x.scope: i_scope = x.scope
-    with tf.name_scope(i_scope + name) as scope:
+    with tf.name_scope(name) as scope:
         x = tf.nn.relu(x)
         m_x = tf.nn.relu(-x)
         x -= alpha * m_x
@@ -188,7 +184,8 @@ def leaky_relu(x, alpha=0.1, name="LeakyReLU"):
 leakyrelu = leaky_relu
 
 
-def prelu(x, channel_shared=False, weights_init='zeros', restore=True, name="PReLU"):
+def prelu(x, channel_shared=False, weights_init='zeros', trainable=True,
+          restore=True, reuse=False, scope=None, name="PReLU"):
     """ PReLU.
 
     Parametric Rectified Linear Unit.
@@ -198,7 +195,10 @@ def prelu(x, channel_shared=False, weights_init='zeros', restore=True, name="PRe
             `int16`, or `int8`.
         channel_shared: `bool`. Single weight is shared by all channels
         weights_init: `str`. Weights initialization. Default: zeros.
-        restore: `bool`. Restore or not alphas
+        trainable: `bool`. If True, weights will be trainable.
+        restore: `bool`. Restore or not alphas.
+        reuse: `bool`. If True and 'scope' is provided, this layer variables
+            will be reused (shared).
         name: A name for this activation op (optional).
 
     Attributes:
@@ -222,16 +222,13 @@ def prelu(x, channel_shared=False, weights_init='zeros', restore=True, name="PRe
     else:
         w_shape = tflearn.utils.get_incoming_shape(x)[-1:]
 
-    # If incoming Tensor has a scope, this op is defined inside it
-    i_scope = ""
-    if hasattr(x, 'scope'):
-        if x.scope: i_scope = x.scope
-    with tf.name_scope(i_scope + name) as scope:
+    with tf.variable_scope(scope, default_name=name, values=[x],
+                           reuse=reuse) as scope:
         W_init = initializations.get(weights_init)()
-        alphas = va.variable(shape=w_shape, initializer=W_init,
-                             restore=restore, name=scope + "alphas")
+        alphas = va.variable("alphas", shape=w_shape, initializer=W_init,
+                             restore=restore, trainable=trainable)
 
-        x = tf.nn.relu(x) + tf.mul(alphas, (x - tf.abs(x))) * 0.5
+        x = tf.nn.relu(x) + tf.multiply(alphas, (x - tf.abs(x))) * 0.5
 
     x.scope = scope
     x.alphas = alphas
@@ -246,8 +243,7 @@ def elu(x):
 
     Arguments:
         x : A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
-            `int16`, or `int8`.
-        name : A name for this activation op (optional).
+            `int16`, or `int8`
 
     Returns:
         A `tuple` of `tf.Tensor`. This layer inference, i.e. output Tensors
@@ -263,3 +259,27 @@ def elu(x):
     """
 
     return tf.nn.elu(x)
+
+
+def crelu(x):
+    """ CReLU
+
+    Computes Concatenated ReLU.
+
+    Concatenates a ReLU which selects only the positive part of the activation
+    with a ReLU which selects only the negative part of the activation. Note
+    that as a result this non-linearity doubles the depth of the activations.
+
+    Arguments:
+        x : A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+            `int16`, or `int8`.
+
+    Returns:
+        A `Tensor` with the same type as `x`.
+
+    Links:
+        [https://arxiv.org/abs/1603.05201](https://arxiv.org/abs/1603.05201)
+
+    """
+
+    return tf.nn.crelu(x)

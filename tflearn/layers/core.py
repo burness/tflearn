@@ -142,15 +142,8 @@ def fully_connected(incoming, n_units, activation='linear', bias=True,
     assert len(input_shape) > 1, "Incoming Tensor shape must be at least 2-D"
     n_inputs = int(np.prod(input_shape[1:]))
 
-    # Build variables and inference.
-    # Variable Scope fix for older TF
-    try:
-        vscope = tf.variable_scope(scope, default_name=name, values=[incoming],
-                                   reuse=reuse)
-    except Exception:
-        vscope = tf.variable_op_scope([incoming], scope, name, reuse=reuse)
-
-    with vscope as scope:
+    with tf.variable_scope(scope, default_name=name, values=[incoming],
+                           reuse=reuse) as scope:
         name = scope.name
 
         W_init = weights_init
@@ -201,16 +194,25 @@ def fully_connected(incoming, n_units, activation='linear', bias=True,
     return inference
 
 
-def dropout(incoming, keep_prob, name="Dropout"):
+def dropout(incoming, keep_prob, noise_shape=None, name="Dropout"):
     """ Dropout.
 
     Outputs the input element scaled up by `1 / keep_prob`. The scaling is so
     that the expected sum is unchanged.
 
+    By default, each element is kept or dropped independently. If noise_shape
+    is specified, it must be broadcastable to the shape of x, and only dimensions
+    with noise_shape[i] == shape(x)[i] will make independent decisions. For
+    example, if shape(x) = [k, l, m, n] and noise_shape = [k, 1, 1, n], each
+    batch and channel component will be kept independently and each row and column
+    will be kept or not kept together.
+
     Arguments:
         incoming : A `Tensor`. The incoming tensor.
         keep_prob : A float representing the probability that each element
             is kept.
+        noise_shape : A 1-D Tensor of type int32, representing the shape for
+            randomly generated keep/drop flags.
         name : A name for this layer (optional).
 
     References:
@@ -231,10 +233,10 @@ def dropout(incoming, keep_prob, name="Dropout"):
         def apply_dropout():
             if type(inference) in [list, np.array]:
                 for x in inference:
-                    x = tf.nn.dropout(x, keep_prob)
+                    x = tf.nn.dropout(x, keep_prob, noise_shape)
                 return inference
             else:
-                return tf.nn.dropout(inference, keep_prob)
+                return tf.nn.dropout(inference, keep_prob, noise_shape)
 
         is_training = tflearn.get_training_mode()
         inference = tf.cond(is_training, apply_dropout, lambda: inference)
@@ -282,7 +284,7 @@ def reshape(incoming, new_shape, name="Reshape"):
     with tf.name_scope(name) as scope:
         inference = incoming
         if isinstance(inference, list):
-            inference = tf.concat(inference, 0)
+            inference = tf.concat(0, inference)
             inference = tf.cast(inference, tf.float32)
         inference = tf.reshape(inference, shape=new_shape)
 
@@ -383,14 +385,8 @@ def single_unit(incoming, activation='linear', bias=True, trainable=True,
     n_inputs = int(np.prod(input_shape[1:]))
 
     # Build variables and inference.
-    # Variable Scope fix for older TF
-    try:
-        vscope = tf.variable_scope(scope, default_name=name, values=[incoming],
-                                   reuse=reuse)
-    except Exception:
-        vscope = tf.variable_op_scope([incoming], scope, name, reuse=reuse)
-
-    with vscope as scope:
+    with tf.variable_scope(scope, default_name=name, values=[incoming],
+                           reuse=reuse) as scope:
         name = scope.name
 
         W = va.variable('W', shape=[n_inputs],
@@ -410,7 +406,7 @@ def single_unit(incoming, activation='linear', bias=True, trainable=True,
         if len(input_shape) > 1:
             inference = tf.reshape(inference, [-1])
 
-        inference = tf.mul(inference, W)
+        inference = tf.multiply(inference, W)
         if b: inference = tf.add(inference, b)
 
         if isinstance(activation, str):
@@ -490,14 +486,8 @@ def highway(incoming, n_units, activation='linear', transform_dropout=None,
     n_inputs = int(np.prod(input_shape[1:]))
 
     # Build variables and inference.
-    # Variable Scope fix for older TF
-    try:
-        vscope = tf.variable_scope(scope, default_name=name, values=[incoming],
-                                   reuse=reuse)
-    except Exception:
-        vscope = tf.variable_op_scope([incoming], scope, name, reuse=reuse)
-
-    with vscope as scope:
+    with tf.variable_scope(scope, default_name=name, values=[incoming],
+                           reuse=reuse) as scope:
         name = scope.name
 
         W_init = weights_init
@@ -543,9 +533,9 @@ def highway(incoming, n_units, activation='linear', transform_dropout=None,
         T = tf.sigmoid(tf.matmul(incoming, W_T) + b_T)
         if transform_dropout:
             T = dropout(T, transform_dropout)
-        C = tf.sub(1.0, T)
+        C = tf.subtract(1.0, T)
 
-        inference = tf.add(tf.mul(H, T), tf.mul(incoming, C))
+        inference = tf.add(tf.multiply(H, T), tf.multiply(incoming, C))
 
         # Track activations.
         tf.add_to_collection(tf.GraphKeys.ACTIVATIONS, inference)
@@ -640,15 +630,18 @@ def time_distributed(incoming, fn, args=None, scope=None):
     assert isinstance(args, list), "'args' must be a list."
 
     if not isinstance(incoming, tf.Tensor):
-        incoming = tf.transpose(tf.pack(incoming), [1, 0, 2])
+        incoming = tf.transpose(tf.stack(incoming), [1, 0, 2])
 
     input_shape = utils.get_incoming_shape(incoming)
     timestep = input_shape[1]
-    x = tf.unpack(incoming, axis=1)
+    x = tf.unstack(incoming, axis=1)
     if scope:
         x = [fn(x[i], scope=scope+'-'+str(i), *args)
              for i in range(timestep)]
     else:
         x = [fn(x[i], *args) for i in range(timestep)]
-    x = map(lambda t: tf.reshape(t, [-1, 1]+utils.get_incoming_shape(t)[1:]), x)
+    try:
+      x = map(lambda t: tf.reshape(t, [-1, 1]+utils.get_incoming_shape(t)[1:]), x)
+    except:
+      x = list(map(lambda t: tf.reshape(t, [-1, 1]+utils.get_incoming_shape(t)[1:]), x))
     return tf.concat(1, x)

@@ -8,7 +8,7 @@ try:
     import h5py
     H5PY_SUPPORTED = True
 except Exception as e:
-    print("hdf5 not supported (please install/reinstall h5py)")
+    print("hdf5 is not supported on this machine (please install/reinstall h5py for optimal experience)")
     H5PY_SUPPORTED = False
 import numpy as np
 import tensorflow as tf
@@ -229,13 +229,10 @@ def feed_dict_builder(X, Y, net_inputs, net_targets):
         # Building feed dictionary
         >> feed_dict = feed_dict_builder(X, Y, input1, output1)
         >> {input1: X, output1: Y}
-
         >> feed_dict = feed_dict_builder({input1: X}, Y, input1, output1)
         >> {input1: X, output1: Y}
-
         >> feed_dict = feed_dict_builder([X1, X2], Y, [in1, in2], out1)
         >> {in1: X1, in2: X2, output1: Y}
-
         # For validation split:
         >> val_feed_dict = feed_dict_builder(0.1, 0.1, input1, output1)
         >> {input1: 0.1, output1: 0.1}
@@ -253,7 +250,6 @@ def feed_dict_builder(X, Y, net_inputs, net_targets):
     Raises:
         Exception if X and net_inputs or Y and net_targets list length doesn't
         match.
-
     """
 
     feed_dict = {}
@@ -265,24 +261,22 @@ def feed_dict_builder(X, Y, net_inputs, net_targets):
             if isinstance(X, float):
                 X = [X for _i in net_inputs]
             elif len(net_inputs) > 1:
-                try: #TODO: Fix brodcast issue if different
+                try:  # TODO: Fix brodcast issue if different
                     if np.ndim(X) < 2:
                         raise ValueError("Multiple inputs but only one data "
                                          "feeded. Please verify number of "
                                          "inputs and data provided match.")
                     elif len(X) != len(net_inputs):
-                        raise Exception(str(len(X)) + " inputs feeded, "
-                                    "but expected: " + str(len(net_inputs)) +
-                                    ". If you are using notebooks, please "
-                                    "make sure that you didn't run graph "
-                                    "construction cell multiple time, "
-                                    "or try to enclose your graph within "
-                                    "`with tf.Graph().as_default():` or "
-                                    "use `tf.reset_default_graph()`")
+                        raise Exception(str(len(X)) + " inputs feeded, " +
+                                        "but expected: " + str(len(net_inputs)) +
+                                        ". If you are using notebooks, please "
+                                        "make sure that you didn't run graph "
+                                        "construction cell multiple time, "
+                                        "or try to enclose your graph within "
+                                        "`with tf.Graph().as_default():` or "
+                                        "use `tf.reset_default_graph()`")
                 except Exception:
-                    # Skip verif
                     pass
-
             else:
                 X = [X]
             for i, x in enumerate(X):
@@ -290,10 +284,10 @@ def feed_dict_builder(X, Y, net_inputs, net_targets):
         else:
             # If a dict is provided
             for key, val in X.items():
-                # Do nothing if dict already fits {placeholder: data} template
+                # Copy to feed_dict if dict already fits {placeholder: data} template
                 if isinstance(key, tf.Tensor):
-                    continue
-                else: # Else retrieve placeholder with its name
+                    feed_dict[key] = val
+                else:  # Else retrieve placeholder with its name
                     var = vs.get_inputs_placeholder_by_name(key)
                     if var is None:
                         raise Exception("Feed dict asks for variable named '%s' but no "
@@ -309,14 +303,14 @@ def feed_dict_builder(X, Y, net_inputs, net_targets):
             if isinstance(Y, float):
                 Y = [Y for _t in net_targets]
             elif len(net_targets) > 1:
-                try: #TODO: Fix brodcast issue if different
+                try:  # TODO: Fix brodcast issue if different
                     if np.ndim(Y) < 2:
                         raise ValueError("Multiple outputs but only one data "
                                          "feeded. Please verify number of outputs "
                                          "and data provided match.")
                     elif len(Y) != len(net_targets):
                         raise Exception(str(len(Y)) + " outputs feeded, "
-                                        "but expected: " + str(len(net_targets)))
+                                                      "but expected: " + str(len(net_targets)))
                 except Exception:
                     # skip verif
                     pass
@@ -327,10 +321,10 @@ def feed_dict_builder(X, Y, net_inputs, net_targets):
         else:
             # If a dict is provided
             for key, val in Y.items():
-                # Do nothing if dict already fits {placeholder: data} template
+                # Copy to feed_dict if dict already fits {placeholder: data} template
                 if isinstance(key, tf.Tensor):
-                    continue
-                else: # Else retrieve placeholder with its name
+                    feed_dict[key] = val
+                else:  # Else retrieve placeholder with its name
                     var = vs.get_targets_placeholder_by_name(key)
                     if var is None:
                         raise Exception("Feed dict asks for variable named '%s' but no "
@@ -470,3 +464,51 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
     for i in range(repetitions):
         outputs = layer(outputs, *args, **kwargs)
     return outputs
+
+
+def fix_saver(collection_lists=None):
+    # Workaround to prevent serialization warning by removing objects
+    if collection_lists is None:
+        try:
+            # Try latest api
+            l = tf.get_collection_ref("summary_tags")
+            l4 = tf.get_collection_ref(tf.GraphKeys.GRAPH_CONFIG)
+        except Exception:
+            l = tf.get_collection("summary_tags")
+            l4 = tf.get_collection(tf.GraphKeys.GRAPH_CONFIG)
+        l_stags = list(l)
+        l4_stags = list(l4)
+        del l[:]
+        del l4[:]
+
+        try:
+            # Try latest api
+            l1 = tf.get_collection_ref(tf.GraphKeys.DATA_PREP)
+            l2 = tf.get_collection_ref(tf.GraphKeys.DATA_AUG)
+        except Exception:
+            l1 = tf.get_collection(tf.GraphKeys.DATA_PREP)
+            l2 = tf.get_collection(tf.GraphKeys.DATA_AUG)
+        l1_dtags = list(l1)
+        l2_dtags = list(l2)
+        del l1[:]
+        del l2[:]
+
+        try: # Do not save exclude variables
+            l3 = tf.get_collection_ref(tf.GraphKeys.EXCL_RESTORE_VARS)
+        except Exception:
+            l3 = tf.get_collection(tf.GraphKeys.EXCL_RESTORE_VARS)
+        l3_tags = list(l3)
+        del l3[:]
+        return [l_stags, l1_dtags, l2_dtags, l3_tags, l4_stags]
+    else:
+        # 0.7+ workaround, restore values
+        for t in collection_lists[0]:
+            tf.add_to_collection("summary_tags", t)
+        for t in collection_lists[4]:
+            tf.add_to_collection(tf.GraphKeys.GRAPH_CONFIG, t)
+        for t in collection_lists[1]:
+            tf.add_to_collection(tf.GraphKeys.DATA_PREP, t)
+        for t in collection_lists[2]:
+            tf.add_to_collection(tf.GraphKeys.DATA_AUG, t)
+        for t in collection_lists[3]:
+            tf.add_to_collection(tf.GraphKeys.EXCL_RESTORE_VARS, t)

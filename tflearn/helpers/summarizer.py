@@ -3,6 +3,14 @@ from __future__ import division, print_function, absolute_import
 import tensorflow as tf
 from .. import summaries
 
+# Fix for TF 0.12
+try:
+    tf012 = True
+    merge_summary = tf.summary.merge
+except Exception:
+    tf012 = False
+    merge_summary = tf.merge_summary
+
 """
 Summarizer contains some useful functions to help summarize variables,
 activations etc... in Tensorboard.
@@ -31,7 +39,7 @@ def summarize_variables(train_vars=None, summary_collection="tflearn_summ"):
     """
     if not train_vars: train_vars = tf.trainable_variables()
     summaries.add_trainable_vars_summary(train_vars, "", "", summary_collection)
-    return tf.merge_summary(tf.get_collection(summary_collection))
+    return merge_summary(tf.get_collection(summary_collection))
 
 
 def summarize_activations(activations, summary_collection="tflearn_summ"):
@@ -48,11 +56,11 @@ def summarize_activations(activations, summary_collection="tflearn_summ"):
 
     """
     summaries.add_activations_summary(activations, "", "", summary_collection)
-    return tf.merge_summary(tf.get_collection(summary_collection))
+    return merge_summary(tf.get_collection(summary_collection))
 
 
 def summarize_gradients(grads, summary_collection="tflearn_summ"):
-    """ summarize_activations.
+    """ summarize_gradients.
 
     Arguemnts:
         grads: list of `Tensor`. The gradients to monitor.
@@ -65,7 +73,7 @@ def summarize_gradients(grads, summary_collection="tflearn_summ"):
 
     """
     summaries.add_gradients_summary(grads, "", "", summary_collection)
-    return tf.merge_summary(tf.get_collection(summary_collection))
+    return merge_summary(tf.get_collection(summary_collection))
 
 
 def summarize(value, type, name, summary_collection="tflearn_summ"):
@@ -85,5 +93,7 @@ def summarize(value, type, name, summary_collection="tflearn_summ"):
         `Tensor`. Merge of all summary in 'summary_collection'.
 
     """
+    if tf012:
+        name = name.replace(':', '_')
     summaries.get_summary(type, name, value, summary_collection)
-    return tf.merge_summary(tf.get_collection(summary_collection))
+    return merge_summary(tf.get_collection(summary_collection))
